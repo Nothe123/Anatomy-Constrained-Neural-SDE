@@ -18,6 +18,7 @@ from tqdm import tqdm
 from torch.cuda.amp import autocast, GradScaler
 import time
 import argparse
+from torch.optim.lr_scheduler import MultiplicativeLR
 
 
 
@@ -48,21 +49,17 @@ def read_mhd_image(file_path):
     return image_tensor
 
 def save_tensor_as_mhd(tensor, file_path, reference_image=None):
-    # Convert Tensor to numpy array
+    
     np_array = tensor.cpu().numpy()
     
-    # If Tensor has channel dimension, select the first channel
-    #if len(np_array.shape) == 4:
-    #    np_array = np_array[0]  # Select first channel
-    
-    # Convert to SimpleITK image
+   
     sitk_image = sitk.GetImageFromArray(np_array)
     
-    # Copy metadata from reference image if provided
+    
     if reference_image is not None:
         sitk_image.CopyInformation(reference_image)
     
-    # Save as MHD file
+    
     sitk.WriteImage(sitk_image, file_path)
     print(f"Tensor saved to {file_path}")
 
@@ -75,11 +72,12 @@ class SDEModel(torchsde.SDEIto):
             nn.Tanh(),
             nn.Linear(16, 32),
             nn.Tanh(),
-            #nn.Linear(32, 32),
-            #nn.Tanh(),
+            nn.Linear(32, 32),
+            nn.Tanh(),
             nn.Linear(32, 16),
             nn.Tanh(),
-            nn.Linear(16, input_size) 
+            nn.Linear(16, input_size), 
+            nn.Tanh()
         )
         #self.drift = nn.Sequential(
         #    nn.Linear(input_size, 128),
@@ -91,11 +89,12 @@ class SDEModel(torchsde.SDEIto):
             nn.Tanh(),
             nn.Linear(16, 32),
             nn.Tanh(),
-            #nn.Linear(32, 64),
+            nn.Linear(32, 32),
             nn.Tanh(),
             nn.Linear(32, 16),
             nn.Tanh(),
-            nn.Linear(16, input_size) 
+            nn.Linear(16, input_size),
+            nn.Tanh()
         )
         self.organ_intersection_constraints = OrganIntersectionConstraint(ref_blader, ref_rectum, ref_prostate, mean, vectors,input_size)                                                                      
         self.bladder_volume_constraints = BladderVolumeConstraint(ref_blader, mean, vectors,input_size, 0.1)
@@ -168,6 +167,7 @@ class SDEModel(torchsde.SDEIto):
 def train_model(model, input_size, train_loader,val_loader, refimg,mean, vector,num_epochs=1000, dt=1, lr=0.01, device='cpu',modelpath='bestmodel.pth'):
     model.to(device)  
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = MultiplicativeLR(optimizer, lr_lambda=lambda epoch: 0.9)
     smoothness_constraint = SmoothnessConstraint(refimg, mean, vector,input_size)
     lamda=0.1
     scaler = GradScaler()
@@ -227,6 +227,7 @@ def train_model(model, input_size, train_loader,val_loader, refimg,mean, vector,
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+            scheduler.step()
 
             total_loss += loss.item()
 

@@ -78,13 +78,7 @@ def perform_deformable_registration(fixed_image, moving_image, mask,initial_tran
 
 
 def compose_transforms(transforms, reference_image):
-    """
-    Compose multiple transforms into a single transform
-    
-    Args:
-    transforms: List of transforms to compose
-    reference_image: Reference image to define the output space
-    """
+    """ Compose multiple transforms into a single transform """
     composite_transform = ants.compose_transforms(
         transforms=transforms,
         reference=reference_image
@@ -92,33 +86,18 @@ def compose_transforms(transforms, reference_image):
     return composite_transform
 
 
-def invert_transform(transform):
-    """Invert a transform"""
-    if isinstance(transform, str):
-        # Load transform if it's a file path
-        transform = ants.image_read(transform)
-    
-    # Invert the transform
-    inverted_transform = ants.invert_transform(transform)
-    return inverted_transform
 
 
 def process_patient_folder(patient_folder, output_base_folder):
-    """
-    Process a single patient folder
     
-    Args:
-    patient_folder: Path to the patient folder
-    output_base_folder: Path to the output base folder
-    """
     patient_id = os.path.basename(patient_folder)
     print(f"Processing patient: {patient_id}")
     
-    # Get all fraction folders
+    
     fraction_folders = [f for f in os.listdir(patient_folder) 
                        if os.path.isdir(os.path.join(patient_folder, f))]
     
-    # Collect all setup MRI and their bladder masks
+    
     setup_mris = []
     bladder_volumes = []
     
@@ -126,13 +105,13 @@ def process_patient_folder(patient_folder, output_base_folder):
         fraction_path = os.path.join(patient_folder, fraction_folder)
         fraction_id = os.path.basename(fraction_path)
         
-        # Find setup MRI image
+        
         setup_mri_path = find_setup_mri(fraction_path, patient_id, fraction_id)
         if not setup_mri_path:
             print(f"    Warning: Setup MRI not found in {fraction_id}")
             continue
         
-        # Find organ mask
+        
         bladder_mask_path = find_mask(fraction_path, patient_id, fraction_id, "Bladder")
         if not bladder_mask_path:
             print(f"    Warning: Bladder mask not found in {fraction_id}")
@@ -148,7 +127,7 @@ def process_patient_folder(patient_folder, output_base_folder):
             print(f"    Warning: Rectum mask not found in {fraction_id}")
             continue
         
-        # Load setup MRI and bladder mask
+        
         setup_mri = load_mri_image(setup_mri_path)
         bladder_mask = load_mask(bladder_mask_path)
         prostate_mask = load_mask(prostate_mask_path)
@@ -157,29 +136,29 @@ def process_patient_folder(patient_folder, output_base_folder):
         if setup_mri is None :
             continue
         
-        # Calculate bladder volume
+       
         volume = calculate_volume(bladder_mask)
         setup_mris.append((setup_mri_path, setup_mri, fraction_id))
         bladder_volumes.append((volume, setup_mri_path, fraction_id))
     
-    # Step 2: Select reference setup MRI based on median bladder volume
+    
     if not setup_mris:
         print(f"No valid setup MRIs found for patient {patient_id}")
         return
     
-    # Sort by bladder volume and select median
+    
     bladder_volumes.sort(key=lambda x: x[0])
     median_index = len(bladder_volumes) // 2
     median_volume, reference_path, reference_fraction_id = bladder_volumes[median_index]
     print(f"Selected reference setup MRI from fraction {reference_fraction_id} with bladder volume: {median_volume:.2f} mm^3")
     
-    # Load reference setup MRI
+    
     reference_setup_mri = load_mri_image(reference_path)
     if reference_setup_mri is None:
         print(f"Failed to load reference setup MRI: {reference_path}")
         return
     
-    # Process each setup MRI to register to the reference
+    
     for setup_mri_path, setup_mri, fraction_id in setup_mris:
         if setup_mri_path == reference_path:
             print(f"Skipping reference setup MRI from fraction {fraction_id}")
@@ -187,12 +166,12 @@ def process_patient_folder(patient_folder, output_base_folder):
         
         print(f"Registering setup MRI from fraction {fraction_id} to reference")
         
-        # Create output directory
+       
         output_registration_folder = os.path.join(
             output_base_folder, patient_id, f"registration_to_fraction_{reference_fraction_id}")
         os.makedirs(output_registration_folder, exist_ok=True)
         
-        # Step 1: Rigid registration
+      
         rigid_output_prefix = os.path.join(
             output_registration_folder, 
             f"rigid_f{fraction_id}_to_f{reference_fraction_id}_")
@@ -202,13 +181,13 @@ def process_patient_folder(patient_folder, output_base_folder):
             moving=setup_mri
         )
         
-        # Save rigid transform
+        
         rigid_transforms = rigid_registration['fwdtransforms']
         for i, transform in enumerate(rigid_transforms):
             transform_path = f"{rigid_output_prefix}transform_{i}.mhd"
             ants.image_write(transform, transform_path)
         
-        # Step 2: Deformable registration with rigid initial transform
+        
         deformable_output_prefix = os.path.join(
             output_registration_folder, 
             f"deformable_f{fraction_id}_to_f{reference_fraction_id}_")
@@ -219,28 +198,28 @@ def process_patient_folder(patient_folder, output_base_folder):
             initial_transform=rigid_registration
         )
         
-        # Save deformable transform
+       
         deformable_transforms = deformable_registration['fwdtransforms']
         for i, transform in enumerate(deformable_transforms):
             transform_path = f"{deformable_output_prefix}transform_{i}.mhd"
             ants.image_write(transform, transform_path)
         
-        # Step 3: Compose rigid and deformable transforms into a single DVF
+        
         compose_output_path = os.path.join(
             output_registration_folder, 
             f"composed_f{fraction_id}_to_f{reference_fraction_id}.mhd")
         
-        # Collect all forward transforms (rigid followed by deformable)
+       
         all_transforms = rigid_transforms + deformable_transforms
         
-        # Compose transforms
+       
         composed_transform = compose_transforms(all_transforms, reference_setup_mri)
         
-        # Save composed transform
+       
         ants.image_write(composed_transform, compose_output_path)
         print(f"Composed transform saved to: {compose_output_path}")
         
-        # Process reconstructed MRIs for this fraction
+       
         process_reconstructed_mris(
             patient_folder, patient_id, fraction_id, 
             reference_setup_mri, reference_fraction_id,
@@ -248,84 +227,7 @@ def process_patient_folder(patient_folder, output_base_folder):
         )
 
 
-def process_reconstructed_mris_old(patient_folder, patient_id, fraction_id, 
-                               reference_setup_mri, reference_fraction_id,
-                               setup_to_reference_transform, output_base_folder):
-    """
-    Process reconstructed MRIs for a given fraction and create new composite transforms
-    
-    Args:
-    patient_folder: Path to the patient folder
-    patient_id: Patient ID
-    fraction_id: Fraction ID
-    reference_setup_mri: Reference setup MRI image
-    reference_fraction_id: Reference fraction ID
-    setup_to_reference_transform: Transform from current setup to reference setup
-    output_base_folder: Path to the output base folder
-    """
-    fraction_path = os.path.join(patient_folder, fraction_id)
-    
-    # Find all reconstructed MRI images for this fraction
-    reconstructed_mris = find_reconstructed_mris(fraction_path, patient_id, fraction_id)
-    if not reconstructed_mris:
-        print(f"    No reconstructed MRIs found in fraction {fraction_id}")
-        return
-    
-    # Find setup MRI for this fraction
-    setup_mri_path = find_setup_mri(fraction_path, patient_id, fraction_id)
-    if not setup_mri_path:
-        print(f"    Setup MRI not found in fraction {fraction_id}")
-        return
-    
-    setup_mri = load_mri_image(setup_mri_path)
-    if setup_mri is None:
-        return
-    
-    # Create output directory
-    output_composite_folder = os.path.join(
-        output_base_folder, patient_id, f"composite_transforms_f{fraction_id}")
-    os.makedirs(output_composite_folder, exist_ok=True)
-    
-    # Invert the setup_to_reference transform
-    inverted_setup_to_reference_transform = invert_transform(setup_to_reference_transform)
-    
-    # Process each reconstructed MRI
-    for recon_mri_path in reconstructed_mris:
-        recon_mri_name = os.path.basename(recon_mri_path)
-        recon_id = re.search(r'Recon_{0}_{1}_(\d+)\.mhd'.format(patient_id, fraction_id), recon_mri_name).group(1)
-        print(f"  Processing reconstructed MRI: {recon_mri_name}")
-        
-        # Load reconstructed MRI
-        recon_mri = load_mri_image(recon_mri_path)
-        if recon_mri is None:
-            continue
-        
-        # Find the DVF from setup to reconstructed MRI (generated in step 1)
-        dvf_filename = f"DVF_setup_to_{os.path.splitext(recon_mri_name)[0]}.mhd"
-        dvf_path = os.path.join(
-            output_base_folder, patient_id, fraction_id, dvf_filename)
-        
-        if not os.path.exists(dvf_path):
-            print(f"    Warning: Setup-to-reconstructed DVF not found: {dvf_path}")
-            continue
-        
-        # Load the setup-to-reconstructed MRI DVF
-        setup_to_recon_dvf = load_mri_image(dvf_path)
-        
-        # Step 3: Compose the inverted setup-to-reference transform with setup-to-reconstructed transform
-        composite_output_path = os.path.join(
-            output_composite_folder, 
-            f"composite_f{fraction_id}_recon{recon_id}_to_reference.mhd")
-        
-        # Compose transforms: (setup-to-reference)^-1 followed by setup-to-reconstructed
-        composite_transform = compose_transforms(
-            transforms=[setup_to_recon_dvf, inverted_setup_to_reference_transform],
-            reference=reference_setup_mri
-        )
-        
-        # Save composite transform
-        ants.image_write(composite_transform, composite_output_path)
-        print(f"    Composite transform saved to: {composite_output_path}")
+
 
 
 def find_setup_mri(fraction_folder, patient_id, fraction_id):
@@ -356,34 +258,10 @@ def find_reconstructed_mris(fraction_folder, patient_id, fraction_id):
 
 
 
-def oldmain():
-    """Main function"""
-    # Set data paths
-    data_folder = "D:\\ProstatePatientData"  # Root directory of patient data
-    output_folder = "/path/to/output"  # Root directory for output results
-    
-    # Get all patient folders
-    patient_folders = [f for f in os.listdir(data_folder) 
-                      if os.path.isdir(os.path.join(data_folder, f))]
-    
-    # Process each patient
-    for patient_folder in tqdm(patient_folders, desc="Processing patients"):
-        patient_path = os.path.join(data_folder, patient_folder)
-        process_patient_folder(patient_path, output_folder)
-    
-    print("All patient data processing completed!")
+
 
 def load_mri_with_masks(mri_path):
-    """
-    Load 3D-MRI image and corresponding bladder, rectum, and prostate masks
     
-    Args:
-        mri_path (str): Path to the 3D-MRI image
-    
-    Returns:
-        tuple: (mri_image, bladder_mask, rectum_mask, prostate_mask)
-               Returns None for any missing masks
-    """
     if not os.path.exists(mri_path):
         raise FileNotFoundError(f"MRI file not found: {mri_path}")
     
@@ -425,16 +303,7 @@ def load_mri_with_masks(mri_path):
     return mri_image, masks['bladder'], masks['rectum'], masks['prostate']
 
 def load_reconmri_with_masks(mri_path):
-    """
-    Load 3D-MRI image and corresponding bladder, rectum, and prostate masks
     
-    Args:
-        mri_path (str): Path to the 3D-MRI image
-    
-    Returns:
-        tuple: (mri_image, bladder_mask, rectum_mask, prostate_mask)
-               Returns None for any missing masks
-    """
     if not os.path.exists(mri_path):
         raise FileNotFoundError(f"MRI file not found: {mri_path}")
     
@@ -475,211 +344,9 @@ def load_reconmri_with_masks(mri_path):
     
     return mri_image, masks['bladder'], masks['rectum'], masks['prostate']
 
-def create_identity_dvf(reference_image):
-    shape = reference_image.shape
-    dimension = reference_image.dimension
-    
-    meshgrid = np.meshgrid(
-        *[np.arange(s) for s in shape], 
-        indexing='ij'
-    )
-    
-    identity_dvf = []
-    for i in range(dimension):
-        displacement = np.zeros_like(meshgrid[i], dtype=np.float32)
-        displacement_img = ants.from_numpy(displacement, origin=reference_image.origin,
-                                         spacing=reference_image.spacing, 
-                                         direction=reference_image.direction)
-        identity_dvf.append(displacement_img)
-    
-    identity_dvf = ants.merge_channels(identity_dvf)
-    return identity_dvf
-def generate_dvf_by_points(transform, reference_image):
-    shape = reference_image.shape
-    origin = reference_image.origin
-    spacing = reference_image.spacing
-    dimension = reference_image.dimension
-    
-    displacement_array = np.zeros(shape + (dimension,), dtype=np.float32)
-    
-    total_points = np.prod(shape)
-    with tqdm(total=total_points, desc="Generating DVF", unit="points") as pbar:
-        for index in np.ndindex(shape):
-            physical_point = [
-                origin[i] + index[i] * spacing[i]
-                for i in range(dimension)
-            ]
-            
-            transformed_point = ants.apply_ants_transform_to_point(
-                transform=transform,
-                point=physical_point
-            )
-            
-            displacement = [
-                transformed_point[i] - physical_point[i]
-                for i in range(dimension)
-            ]
-            
-            displacement_array[index] = displacement
-            pbar.update(1)
-    
-    dvf = ants.from_numpy(
-        displacement_array,
-        origin=origin,
-        spacing=spacing,
-        direction=reference_image.direction
-    )
-    
-    return dvf    
-def generate_dvf_by_points_MT(transform, reference_image, max_workers=None, chunk_size=100000):
-    shape = reference_image.shape
-    origin = reference_image.origin
-    spacing = reference_image.spacing
-    dimension = reference_image.dimension
-    
-    displacement_array = np.zeros(shape + (dimension,), dtype=np.float32)
-    
-    all_indices = [(i, j, k) for i in range(shape[0]) 
-                  for j in range(shape[1]) 
-                  for k in range(shape[2])] if dimension == 3 else \
-                  [(i, j) for i in range(shape[0]) for j in range(shape[1])]
-    
-    def process_point(idx):
-        physical_point = [origin[i] + idx[i] * spacing[i] for i in range(dimension)]
-        transformed_point = ants.apply_ants_transform_to_point(transform, physical_point)
-        displacement = [transformed_point[i] - physical_point[i] for i in range(dimension)]
-        return idx, displacement
-    
-    def process_chunk(chunk_indices):
-        results = []
-        for idx in chunk_indices:
-            results.append(process_point(idx))
-        return results
-    
-    num_chunks = (len(all_indices) + chunk_size - 1) // chunk_size
-    chunks = [all_indices[i*chunk_size : (i+1)*chunk_size] for i in range(num_chunks)]
-    
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results_list = list(tqdm(
-            executor.map(process_chunk, chunks),
-            total=num_chunks,
-            desc="Generating DVF"
-        ))
-    
-    for results in results_list:
-        for idx, displacement in results:
-            displacement_array[idx] = displacement
-    
-    dvf = ants.from_numpy(
-        displacement_array,
-        origin=origin,
-        spacing=spacing,
-        direction=reference_image.direction
-    )
-    
-    return dvf  
-def _process_chunk(args):
-    chunk, origin, spacing, transform_file1, transform_file2 = args
-    transform1 = ants.read_transform(transform_file1)
-    transform2 = ants.read_transform(transform_file2)
-    vec = ants.image_read( transform_file2 )
-    transform2 = ants.transform_from_displacement_field( vec )
-    composite_transform = ants.compose_transforms([transform1, transform2])
-    physical_points = origin + chunk * spacing
-    transformed_points = np.array([
-        ants.apply_ants_transform_to_point(composite_transform, pt)
-        for pt in physical_points
-    ])
-    displacements = transformed_points - physical_points
-    return chunk.astype(int), displacements
 
-def generate_dvf_by_points_MP(transform_file1, transform_file2, reference_image, 
-                             max_workers=None, chunk_size=10000):
-    shape = reference_image.shape
-    origin = np.array(reference_image.origin)
-    spacing = np.array(reference_image.spacing)
-    dimension = reference_image.dimension
-    displacement_array = np.zeros(shape + (dimension,), dtype=np.float32)
-    grid = np.stack(np.mgrid[[slice(0, s) for s in shape]], axis=-1)
-    chunks = np.array_split(grid.reshape(-1, dimension), 
-                          grid.size // dimension // chunk_size + 1)
-    params = [(chunk, origin, spacing, transform_file1, transform_file2) for chunk in chunks]
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_process_chunk, param) for param in params]
-        for future in tqdm(futures, desc="Processing chunks"):
-            indices, displacements = future.result()
-            displacement_array[tuple(indices.T)] = displacements
-    return ants.from_numpy(
-        displacement_array,
-        origin=origin,
-        spacing=spacing,
-        direction=reference_image.direction
-    )    
 
-def generate_dvf_by_batch(transform, reference_image, batch_size=10000):
-    shape = reference_image.shape
-    origin = reference_image.origin
-    spacing = reference_image.spacing
-    dimension = reference_image.dimension
-    
-    total_points = np.prod(shape)
-    all_indices = np.array([index for index in np.ndindex(shape)])
-    
-    displacement_array = np.zeros(shape + (dimension,), dtype=np.float32)
-    
-    for i in range(0, total_points, batch_size):
-        batch_indices = all_indices[i:i+batch_size]
-        
-        physical_points = np.array([
-            [origin[j] + idx[j] * spacing[j] for j in range(dimension)]
-            for idx in batch_indices
-        ])
-        
-        points_image = ants.from_numpy(
-            physical_points.reshape((len(batch_indices),) + (1,) * (dimension-1) + (dimension,)),
-            origin=reference_image.origin,
-            spacing=reference_image.spacing,
-            direction=reference_image.direction
-        )
-        
-        transformed_points_image = ants.apply_transforms(
-            fixed=reference_image,
-            moving=points_image,
-            transformlist=[transform]
-        )
-        
-        transformed_points = transformed_points_image.numpy().reshape(-1, dimension)
-        
-        for j, idx in enumerate(batch_indices):
-            displacement = transformed_points[j] - physical_points[j]
-            displacement_array[tuple(idx)] = displacement
-    
-    dvf = ants.from_numpy(
-        displacement_array,
-        origin=origin,
-        spacing=spacing,
-        direction=reference_image.direction
-    )
-    
-    return dvf 
 
-def batch_transform_points(transform, points):
-    dimension = points.shape[1]
-    points_image = ants.from_numpy(
-        points.reshape((len(points),) + (1,) * (dimension-1) + (dimension,)),
-        origin=[0.0] * dimension,
-        spacing=[1.0] * dimension,
-        direction=np.eye(dimension)
-    )
-    
-    transformed_points_image = ants.apply_transforms(
-        fixed=points_image,
-        moving=points_image,
-        transformlist=[transform],
-        interpolator='linear'
-    )
-    
-    return transformed_points_image.numpy().reshape(-1, dimension)   
 
 def generate_dvf_by_points_new(transform_files, reference_image):
     shape = reference_image.shape
@@ -710,9 +377,7 @@ def generate_dvf_by_points_new(transform_files, reference_image):
         transformlist=transform_files
     )
     transformed_points = transformed_df.to_numpy()
-    #np.array([
-    #    transformed_df[columns].values for col in columns
-    #]).T
+    
     
     
     displacements = transformed_points - physical_points
@@ -861,21 +526,14 @@ def main():
                 output_folder, patient_id, f"registration_to_refernce_{patient_id}_{fraction_id}")
             os.makedirs(output_registration_folder, exist_ok=True)
             
-            # Step 1: Rigid registration
-            #rigid_output_prefix = os.path.join(
-            #    output_registration_folder, 
-            #    f"rigid_f{fraction_id}_to_ref")
+            
             
             rigid_registration = perform_rigid_registration(
                 fixed_image=reference_setup_mri,
                 moving_image=setup_mri
             )
             
-            # Save rigid transform
-            #rigid_transforms = rigid_registration['fwdtransforms']
-            
-            
-            # Step 2: Deformable registration with rigid initial transform
+           
             deformable_output_prefix = os.path.join(
                 output_registration_folder, 
                 f"DVF_{patient_id}_{fraction_id}_to_ref")
@@ -887,12 +545,7 @@ def main():
                 initial_transform=rigid_registration
             )
             
-            # Save deformable transform
-            #deformable_transforms = deformable_registration['fwdtransforms']
-            #rigid_transform=deformable_registration["fwdtransforms"][0]
-            #vec = ants.image_read( deformable_registration['fwdtransforms'][0] )
-            #deformable_transform = ants.transform_from_displacement_field( vec )
-            #rigid_transform=ants.read_transform(rigid_registration["fwdtransforms"][0])
+          
             filelist=[]
             filelist.append(rigid_registration["fwdtransforms"][0])
             filelist.append(deformable_registration["fwdtransforms"][0])
@@ -921,33 +574,22 @@ def main():
 def process_reconstructed_mris(patient_folder, patient_id, fraction_id, 
                                reference_setup_mri, reference_fraction_id,
                                setup_to_reference_transform_path, output_base_folder):
-    """
-    Process reconstructed MRIs for a given fraction and create new composite transforms
-    
-    Args:
-    patient_folder: Path to the patient folder
-    patient_id: Patient ID
-    fraction_id: Fraction ID
-    reference_setup_mri: Reference setup MRI image
-    reference_fraction_id: Reference fraction ID
-    setup_to_reference_transform: Transform from current setup to reference setup
-    output_base_folder: Path to the output base folder
-    """
+    """Process reconstructed MRIs for a given fraction and create new composite transforms"""
     fraction_path = os.path.join(patient_folder, fraction_id)
     
-    # Find all reconstructed MRI images for this fraction
+    
     reconstructed_mris = find_reconstructed_mris(fraction_path, patient_id, fraction_id)
     if not reconstructed_mris:
         print(f"    No reconstructed MRIs found in fraction {fraction_id}")
         return
     
-    # Find setup MRI for this fraction
+    
     setup_mri_path = find_setup_mri(fraction_path, patient_id, fraction_id)
     if not setup_mri_path:
         print(f"    Setup MRI not found in fraction {fraction_id}")
         return
     
-    #setup_mri = load_mri_image(setup_mri_path)
+    
     setup_mri,setup_mask_bladder, setup_mask_rectum, setup_mask_prostate = load_mri_with_masks(setup_mri_path)
     if setup_mri is None:
         return
@@ -957,7 +599,7 @@ def process_reconstructed_mris(patient_folder, patient_id, fraction_id,
     setup_arr = np.logical_or(setup_bladdermask_arr, setup_prostatemask_arr,setup_rectummask_arr).astype(np.uint8)
             
     
-    # Create output directory for registration results
+    
 
     output_registration_folder = os.path.join(
                 output_base_folder, patient_id, f"recon_to_setup_registration{patient_id}_{fraction_id}")
@@ -965,53 +607,68 @@ def process_reconstructed_mris(patient_folder, patient_id, fraction_id,
     
    
     
-    # Invert the setup_to_reference transform
-    #inverted_setup_to_reference_transform = invert_transform(setup_to_reference_transform)
-    
-    # Process each reconstructed MRI
+   
     for recon_mri_path in reconstructed_mris:
         recon_mri_name = os.path.basename(recon_mri_path)
         recon_id = re.search(r'Recon_{0}_{1}_(\d+)\.mhd'.format(patient_id, fraction_id), recon_mri_name).group(1)
+        recon_mri_dvf_name = 'ReconDVF_'+patient_id+'_'+fraction_id+'_'+recon_id+'.mhd'
+        recon_mri_dvf_path= os.path.join(fraction_path, "ReconDVF", recon_mri_dvf_name)
         print(f"  Processing reconstructed MRI: {recon_mri_name}")
-        
-        # Load reconstructed MRI
-        recon_mri,recon_mask_bladder, recon_mask_rectum, recon_mask_prostate = load_reconmri_with_masks(recon_mri_path)
-        if recon_mri is None:
-            continue
 
-        recon_bladdermask_arr=recon_mask_bladder.numpy()
-        recon_prostatemask_arr=recon_mask_prostate.numpy()
-        recon_rectummask_arr=recon_mask_rectum.numpy()
-        recon_arr = np.logical_or(recon_bladdermask_arr, recon_prostatemask_arr,recon_rectummask_arr).astype(np.uint8)
-
-        mask_arr =np.logical_or(recon_arr, setup_arr).astype(np.uint8)
-        mask = ants.from_numpy(mask_arr)
-        mask.set_spacing(setup_mri.spacing)
-        mask.set_origin(setup_mri.origin)
-        mask.set_direction(setup_mri.direction)
+        if os.path.exists(recon_mri_dvf_path):
+            filelist=[]
         
-        # Perform deformable registration from reconstructed MRI to setup MRI
-        print(f"    Registering reconstructed MRI to setup MRI for fraction {fraction_id}")
-
-        deformable_registration = perform_deformable_registration(
-                fixed_image=recon_mri,
-                moving_image=setup_mri,
-                mask=mask,
-                initial_transform=None
-            )
-        filelist=[]
-        
-        filelist.append(deformable_registration["fwdtransforms"][0])
-        filelist.append(setup_to_reference_transform_path)
-        composed_transform=generate_dvf_by_points_new(filelist, setup_mri)
+            filelist.append(deformable_registration["fwdtransforms"][0])
+            filelist.append(setup_to_reference_transform_path)
+            composed_transform=generate_dvf_by_points_new(filelist, setup_mri)
         
        
-        composite_output_path = os.path.join(
-            output_registration_folder, 
-            f"compositeDVF_recon{recon_id}_f{fraction_id}_to_ref.mhd")
+            composite_output_path = os.path.join(
+                output_registration_folder, 
+                f"compositeDVF_recon{recon_id}_f{fraction_id}_to_ref.mhd")
         
-        ants.image_write(composed_transform, composite_output_path)
-        print(f"    Composite transform saved to: {composite_output_path}")
+            ants.image_write(composed_transform, composite_output_path)
+            print(f"    Composite transform saved to: {composite_output_path}")
+    
+        else:
+ 
+            recon_mri,recon_mask_bladder, recon_mask_rectum, recon_mask_prostate = load_reconmri_with_masks(recon_mri_path)
+            if recon_mri is None:
+                continue
+
+            recon_bladdermask_arr=recon_mask_bladder.numpy()
+            recon_prostatemask_arr=recon_mask_prostate.numpy()
+            recon_rectummask_arr=recon_mask_rectum.numpy()
+            recon_arr = np.logical_or(recon_bladdermask_arr, recon_prostatemask_arr,recon_rectummask_arr).astype(np.uint8)
+
+            mask_arr =np.logical_or(recon_arr, setup_arr).astype(np.uint8)
+            mask = ants.from_numpy(mask_arr)
+            mask.set_spacing(setup_mri.spacing)
+            mask.set_origin(setup_mri.origin)
+            mask.set_direction(setup_mri.direction)
+        
+            # Perform deformable registration from reconstructed MRI to setup MRI
+            print(f"    Registering reconstructed MRI to setup MRI for fraction {fraction_id}")
+
+            deformable_registration = perform_deformable_registration(
+                    fixed_image=recon_mri,
+                    moving_image=setup_mri,
+                    mask=mask,
+                    initial_transform=None
+                )
+            filelist=[]
+        
+            filelist.append(deformable_registration["fwdtransforms"][0])
+            filelist.append(setup_to_reference_transform_path)
+            composed_transform=generate_dvf_by_points_new(filelist, setup_mri)
+        
+       
+            composite_output_path = os.path.join(
+                output_registration_folder, 
+                f"compositeDVF_recon{recon_id}_f{fraction_id}_to_ref.mhd")
+        
+            ants.image_write(composed_transform, composite_output_path)
+            print(f"    Composite transform saved to: {composite_output_path}")
 
 
 
