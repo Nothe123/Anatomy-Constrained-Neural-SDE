@@ -8,20 +8,14 @@ import random
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import os
+from torch.optim.lr_scheduler import MultiplicativeLR
 #from skimage.transform import resize
 
 
 
 class MRIImageDataset(Dataset):
     def __init__(self, data_dir,  transform=None):
-        """
-        Initialize medical image dataset without using glob
-        
-        Args:
-            data_dir: Path to data directory containing sparse_volumetric, reference_3d, and sorted_cine subdirectories
-            split: 'train' or 'val' for training/validation split
-            transform: Data augmentation transforms
-        """
+       
         self.transform = transform
         self.data_dir = data_dir
        
@@ -405,7 +399,6 @@ def train_model(model, train_dataloader, val_dataloader, num_epochs, optimizer, 
     
 
 
-
     if stage == 2:
         stage1_model_path = f'{save_dir}/model_stage1_best.pth'
         if os.path.exists(stage1_model_path):
@@ -438,6 +431,8 @@ def train_model(model, train_dataloader, val_dataloader, num_epochs, optimizer, 
     best_model_epoch = 0
     
     model.train()
+    scheduler = MultiplicativeLR(optimizer, lr_lambda=lambda epoch: 0.9)
+
     for epoch in range(num_epochs):
         running_train_loss = 0.0
         model.train()
@@ -462,6 +457,7 @@ def train_model(model, train_dataloader, val_dataloader, num_epochs, optimizer, 
             del sparse_volumetric, reference_3d, label, dvf, reconstructed_mri
             torch.cuda.empty_cache()
 
+        scheduler.step()
         train_loss = running_train_loss / len(train_dataloader)
         
         running_val_loss = 0.0
