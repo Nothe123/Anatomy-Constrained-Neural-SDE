@@ -1,4 +1,5 @@
-![image](https://github.com/user-attachments/assets/8ad522ca-4cd6-4e1a-88f4-6ee557583b52)
+
+![GraphicalAbstract](https://github.com/user-attachments/assets/eb903e50-a83e-4ab5-956e-b0898b0d3664)
 
 The codes are  implementaion of "A Probabilistic organ motion model based on Anatomy-Constrained Neural Stochastic Differential Equation for Prostate MRI-guided Radiotherapy"
 The general work flow was shown above. The code consists of four main modules:
