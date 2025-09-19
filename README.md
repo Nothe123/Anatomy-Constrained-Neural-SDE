@@ -3,12 +3,22 @@
 
 
 The codes are  implementaion of "A Probabilistic organ motion model based on Anatomy-Constrained Neural Stochastic Differential Equation for Prostate MRI-guided Radiotherapy"
-The general work flow was shown above. The code consists of four main modules:
-1. 3DMRIReconstruction.py was used to establish and apply the deep learning model for 3D-MRI reocnstruciton from single cine-MRI.
-2. RegistrationScript.py performed the rigid and deformable image registraiotn to transform the organ motion from different patients to the same anatomy space
-3. IncrementalPCA redcuded the dimension of DVF generated from registraiton to simplify the problem
-4. NeuralSDEwithConstraints constructed and applied the anatomy constrained neural-SDE
-The neural-SDE was constructed by executing the above  modules in order.
+A detailed description of the entire workflow, including code instructions, is illustrated as follows.
+1)	Data preparation
+First, for each cine-MRI, the corresponding 3D-MRI needs to be reconstructed with our previously developed network. The training of the network comprises two stages.
+1.1)	 Stage 1
+The training dataset is generated. 10000 pairs of 3D images are randomly selected. Each pair has two 3D-MRI images: one is the reference image and the other is the training label. From the training label, a 2D sagittal slice is randomly extracted. A sparse volumetric image is generated from the 2D slice, as illustrated in our previous study [3]. Then, three folders are created—“sparse_volumetric,” “reference_3d,” and “label”—and the above data needs to be put into the corresponding folder. The filename and format are as follows: “id.mhd,” where id is the index of the training data sample. Then the script “3DMRIReconstruction.py” is run for training the network. The variables “trainingdatadir” and “validationdatadir” are set as the root folders of the training and validation datasets, respectively. When the training script is started, select the operation “1 Train model” and input the training stage with “1.” Then, the training will start. The training automatically stops when Lrmse is less than 0.5%. 
+1.2)	 Stage 2
+Instead of 2D extracted slices, the sagittal cine-MRIs are used to generate the input sparse volumetric images, and the training labels are also sparse volumetric images generated from coronal and axial cine-MRIs. The other preparations are the same as in Stage 1. When the training script is run, the training stage needs to be input as “2.”
+2)	DVF Transformation
+ 
+Fig. 7. File organization of input and output RegistrationScript 
+Second, DVFs should be generated and transformed into a unified reference space using the script “RegistrationScript.py.” Before running the script, the input data should be organized as shown in Fig. 7(A). Patientid and Fractionid denote the patient and fraction indices. Positioning_Patientid_Fractionid.mhd is the positioning image, and Positioning_Bladder_Patientid_Fractionid.mhd, Positioning_Rectum_Patientid_Fractionid.mhd, and Positioning_Prostate_Patientid_Fractionid.mhd are the corresponding 3D organ masks in the positioning image. Recon_Patientid_Fractionid_id.mhd represents the DVF generated from the previous step for the idth cine-MRI, and Recon_Bladder_Patientid_Fractionid_id.mhd, Recon_Rectum_Patientid_Fractionid_id.mhd, and Recon_Prostate_Patientid_Fractionid_id.mhd are the 3D organ masks obtained from the reconstructed DVF. Once the input files are organized, the script can be executed. The output files, organized as in Fig. 7(B), are stored in a single folder for each patient. This folder contains two types of subfolders: registration_to_reference_Patientid_Fractionid, which includes the DVF between the positioning image of the specified fraction and the reference image (one DVF per subfolder), and recon_to_setup_registrationPatient1_Fraction1, which contains the DVFs between the reconstructed 3D-MRI and the reference image. Running this script allows intra-fractional organ motion across all patients to be represented within a unified reference anatomy space.
+3)	Incremental PCA
+Third, dimension reduction of the DVFs is performed using incremental PCA, implemented in the script “incrementalPCA.py.” In the script’s configuration, the inputfolder and outputfolder must be specified. All input DVFs should be placed in the folder defined by inputfolder. After running the script, the principal components and their corresponding coefficients are saved in the folder specified by outputfolder.
+4)	Anatomy-constrained neural-SDE
+Using the PCA coefficients, the anatomy-constrained neural-SDE can be trained and applied via the script “NeuralSDEwithConstraints.py.” Before running the script, several variables must be initialized: ref_img_path for the reference image, ref_bladder_path, ref_rectum_path, and ref_prostate_path for the bladder, rectum, and prostate 3D masks in the reference image, respectively. principal_components_path and mean_field_path specify the file paths for the principal components and mean DVF, while trainingfolder_path and trainingtimestamp_path indicate the paths for the training PCA coefficients and their corresponding timestamps, which can be extracted from the raw cine-MRI files. Training is initiated by selecting the mode “1. Train Model” and automatically stops when the MLE loss variation is below 5% for five consecutive epochs. After training, the mode “2. Apply Model” can be selected, and the test data paths (testdata_path and testtimestamp_path) specified. The predicted PCA coefficients are saved to output_path. From these coefficients, DVFs and corresponding organ contours can be reconstructed.
+
 
 Any question about the code, you can contact via wei_cn00@163.com
                         
