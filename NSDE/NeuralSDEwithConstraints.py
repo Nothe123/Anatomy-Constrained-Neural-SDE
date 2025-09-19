@@ -206,7 +206,7 @@ def train_model(model, input_size, train_loader,val_loader, refimg,mean, vector,
             
             with autocast():
                 start_time = time.time()
-                ys = torchsde.sdeint(model, y0, timestamps, method="euler",dt=dt)
+                ys = torchsde.sdeint(model, y0, timestamps, method="milstein",dt=dt)
             #ys = torchsde.sdeint(model, y0, t,method="srk")
                 end_time = time.time()
                 elapsed_time = end_time - start_time
@@ -539,6 +539,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
